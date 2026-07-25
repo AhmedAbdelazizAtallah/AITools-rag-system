@@ -87,7 +87,7 @@ OPENROUTER_MODEL="openai/gpt-4o-mini"
 
 ## 📐 Reciprocal Rank Fusion
 
-\[ RRF(d)=`\sum`{=tex}\_{m`\in `{=tex}M}`\frac{1}{k+r_m(d)}`{=tex} \]
+$\mathrm{RRF}(d)=\sum_{m\in M}\frac{1}{k+r_m(d)}$
 
 Where: - **M**: Set of retrievers (BM25 + FAISS) - **rₘ(d)**: Rank of
 document *d* - **k**: Smoothing constant (typically 60)
