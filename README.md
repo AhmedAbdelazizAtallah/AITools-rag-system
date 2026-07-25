@@ -89,8 +89,9 @@ OPENROUTER_MODEL="openai/gpt-4o-mini"
 
 $\mathrm{RRF}(d)=\sum_{m\in M}\frac{1}{k+r_m(d)}$
 
-Where: - **M**: Set of retrievers (BM25 + FAISS) - **rₘ(d)**: Rank of
-document *d* - **k**: Smoothing constant (typically 60)
+- **\(M\)**: Set of retrieval methods (BM25 and FAISS)
+- **\(r_m(d)\)**: Rank of document \(d\) returned by retriever \(m\)
+- **\(k\)**: Smoothing constant (typically **60**)
 
 ## ✅ Features Checklist
 
