@@ -13,17 +13,34 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Secrets and Model Configuration (Matching Submission Rubric) ---
-OPENROUTER_API_KEY = getattr(__import__('config'), 'OPENROUTER_API_KEY', os.getenv("OPENROUTER_API_KEY", ""))
-OPENROUTER_MODEL = "openai/gpt-4o-mini"  # Default required model
+# --- Safe Secrets & API Key Resolution ---
+def resolve_api_key():
+    # 1. Check Streamlit Secrets
+    try:
+        if "OPENROUTER_API_KEY" in st.secrets and st.secrets["OPENROUTER_API_KEY"]:
+            return str(st.secrets["OPENROUTER_API_KEY"]).strip()
+    except Exception:
+        pass
+    
+    # 2. Check config.py or environment variables
+    try:
+        import config
+        if getattr(config, "OPENROUTER_API_KEY", None):
+            return str(config.OPENROUTER_API_KEY).strip()
+    except Exception:
+        pass
+        
+    return os.getenv("OPENROUTER_API_KEY", "").strip()
 
+OPENROUTER_API_KEY = resolve_api_key()
+
+# Model resolution
+OPENROUTER_MODEL = "openai/gpt-4o-mini"
 try:
-    if not OPENROUTER_API_KEY:
-        OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
-    OPENROUTER_MODEL = st.secrets.get("OPENROUTER_MODEL", OPENROUTER_MODEL)
+    if "OPENROUTER_MODEL" in st.secrets:
+        OPENROUTER_MODEL = st.secrets["OPENROUTER_MODEL"]
 except Exception:
     pass
-# ---------------------------------------------------------------------
 
 st.title("🎓 Academic Hybrid-RAG System")
 st.caption("Advanced Information Retrieval & Synthesis System using BM25, FAISS, and Reciprocal Rank Fusion (RRF)")
@@ -38,7 +55,10 @@ if "faiss_indexer" not in st.session_state:
 if "processed_files" not in st.session_state:
     st.session_state["processed_files"] = set()
 
-def generate_answer_with_openrouter(query: str, retrieved_chunks: list, api_key: str, model: str) -> str:
+def generate_answer_with_openrouter(query: str, retrieved_chunks: list, user_key: str, model: str) -> str:
+    # Use user input key if provided, otherwise fallback to system key
+    api_key = user_key.strip() if user_key and user_key.strip() else OPENROUTER_API_KEY
+    
     if not api_key:
         return "⚠️ Please enter your OpenRouter API Key in the sidebar or Streamlit Secrets."
     
@@ -47,7 +67,6 @@ def generate_answer_with_openrouter(query: str, retrieved_chunks: list, api_key:
         for doc in retrieved_chunks
     ])
     
-    # Enhanced Academic System Prompt
     system_prompt = (
         "You are an expert academic research assistant. Answer the user's query comprehensively "
         "and accurately based strictly on the provided context.\n"
@@ -69,7 +88,7 @@ def generate_answer_with_openrouter(query: str, retrieved_chunks: list, api_key:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.1  # Low temperature for factual academic responses
+            temperature=0.1
         )
         return response.choices[0].message.content
     except Exception as e:
