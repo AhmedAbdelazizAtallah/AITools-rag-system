@@ -3,7 +3,6 @@ from openai import OpenAI
 import os
 import time
 from config import DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP, DEFAULT_TOP_K, EMBEDDING_MODEL_NAME
-OPENROUTER_API_KEY = getattr(__import__('config'), 'OPENROUTER_API_KEY', os.getenv("OPENROUTER_API_KEY", ""))
 from pdf_parser import process_uploaded_files
 from retrievers import BM25Retriever, DenseRetriever, HybridRRFRetriever
 from indexer import FaissIndex
@@ -13,6 +12,18 @@ st.set_page_config(
     page_icon="🎓",
     layout="wide"
 )
+
+# --- Secrets and Model Configuration (Matching Submission Rubric) ---
+OPENROUTER_API_KEY = getattr(__import__('config'), 'OPENROUTER_API_KEY', os.getenv("OPENROUTER_API_KEY", ""))
+OPENROUTER_MODEL = "openai/gpt-4o-mini"  # Default required model
+
+try:
+    if not OPENROUTER_API_KEY:
+        OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
+    OPENROUTER_MODEL = st.secrets.get("OPENROUTER_MODEL", OPENROUTER_MODEL)
+except Exception:
+    pass
+# ---------------------------------------------------------------------
 
 st.title("🎓 Academic Hybrid-RAG System")
 st.caption("Advanced Information Retrieval & Synthesis System using BM25, FAISS, and Reciprocal Rank Fusion (RRF)")
@@ -27,9 +38,9 @@ if "faiss_indexer" not in st.session_state:
 if "processed_files" not in st.session_state:
     st.session_state["processed_files"] = set()
 
-def generate_answer_with_openrouter(query: str, retrieved_chunks: list, api_key: str) -> str:
+def generate_answer_with_openrouter(query: str, retrieved_chunks: list, api_key: str, model: str) -> str:
     if not api_key:
-        return "⚠️ Please enter your OpenRouter API Key in the sidebar or .env file."
+        return "⚠️ Please enter your OpenRouter API Key in the sidebar or Streamlit Secrets."
     
     context = "\n\n---\n\n".join([
         f"[Source: {doc['metadata']['source_file']} | Page: {doc['metadata']['page_number']}]\n{doc['text']}"
@@ -47,33 +58,22 @@ def generate_answer_with_openrouter(query: str, retrieved_chunks: list, api_key:
         "3. Format your response with clear headings and bullet points if necessary."
     )
     
-    user_prompt = f"Context Context:\n{context}\n\nUser Query: {query}\n\nAcademic Answer:"
-    
-    free_models = [
-        "google/gemini-2.5-flash:free",
-        "meta-llama/llama-3.2-11b-vision-instruct:free",
-        "openrouter/auto"
-    ]
+    user_prompt = f"Context:\n{context}\n\nUser Query: {query}\n\nAcademic Answer:"
     
     client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
 
-    last_error = ""
-    for model_name in free_models:
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                temperature=0.1 # Low temperature for factual academic answers
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            last_error = str(e)
-            continue
-            
-    return f"API Connection Error: {last_error}"
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.1  # Low temperature for factual academic responses
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"API Connection Error: {str(e)}"
 
 # ---------------------------------------------------------
 # Sidebar Configuration
@@ -175,14 +175,14 @@ else:
         # Generation Phase
         gen_start = time.time()
         with st.spinner("Synthesizing answer using LLM..."):
-            ai_answer = generate_answer_with_openrouter(query, retrieved_chunks, user_openrouter_key)
+            ai_answer = generate_answer_with_openrouter(query, retrieved_chunks, user_openrouter_key, OPENROUTER_MODEL)
         gen_time = round(time.time() - gen_start, 3)
 
         # Display Results
         st.markdown("### 🤖 Synthesized Academic Response:")
         st.success(ai_answer)
         
-        # Display Metrics (Professors love this)
+        # Display Metrics
         st.caption(f"⏱️ **Performance Metrics:** Retrieval Time: {retrieval_time}s | Generation Time: {gen_time}s")
 
         st.markdown("---")
