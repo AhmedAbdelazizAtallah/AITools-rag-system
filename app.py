@@ -13,16 +13,14 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- Safe Secrets & API Key Resolution ---
+# --- قراءة المفتاح في الخلفية فقط (Backend) دون إظهاره في الواجهة ---
 def resolve_api_key():
-    # 1. Check Streamlit Secrets
     try:
         if "OPENROUTER_API_KEY" in st.secrets and st.secrets["OPENROUTER_API_KEY"]:
             return str(st.secrets["OPENROUTER_API_KEY"]).strip()
     except Exception:
         pass
     
-    # 2. Check config.py or environment variables
     try:
         import config
         if getattr(config, "OPENROUTER_API_KEY", None):
@@ -32,9 +30,9 @@ def resolve_api_key():
         
     return os.getenv("OPENROUTER_API_KEY", "").strip()
 
-OPENROUTER_API_KEY = resolve_api_key()
+# الـ Key المريح آمن وموجود في السيرفر فقط
+SERVER_OPENROUTER_API_KEY = resolve_api_key()
 
-# Model resolution
 OPENROUTER_MODEL = "openai/gpt-4o-mini"
 try:
     if "OPENROUTER_MODEL" in st.secrets:
@@ -56,11 +54,11 @@ if "processed_files" not in st.session_state:
     st.session_state["processed_files"] = set()
 
 def generate_answer_with_openrouter(query: str, retrieved_chunks: list, user_key: str, model: str) -> str:
-    # Use user input key if provided, otherwise fallback to system key
-    api_key = user_key.strip() if user_key and user_key.strip() else OPENROUTER_API_KEY
+    # إذا أدخل المستخدم مفتاحاً خاصاً به نستخدمه، وإلا نستخدم مفتاح السيرفر المحفوظ بأمان
+    api_key = user_key.strip() if user_key and user_key.strip() else SERVER_OPENROUTER_API_KEY
     
     if not api_key:
-        return "⚠️ Please enter your OpenRouter API Key in the sidebar or Streamlit Secrets."
+        return "⚠️ Please enter an OpenRouter API Key or configure Streamlit Secrets."
     
     context = "\n\n---\n\n".join([
         f"[Source: {doc['metadata']['source_file']} | Page: {doc['metadata']['page_number']}]\n{doc['text']}"
@@ -99,7 +97,13 @@ def generate_answer_with_openrouter(query: str, retrieved_chunks: list, user_key
 # ---------------------------------------------------------
 with st.sidebar:
     st.header("🔑 API Configuration")
-    user_openrouter_key = st.text_input("OpenRouter API Key:", value=OPENROUTER_API_KEY or "", type="password")
+    # جعلنا القيمة value فارغة تماماً لحماية المفتاح، مع إضافة placeholder توضيحي
+    user_openrouter_key = st.text_input(
+        "OpenRouter API Key:", 
+        value="", 
+        placeholder="Leave empty to use system default key", 
+        type="password"
+    )
 
     st.divider()
     st.header("📂 Document Management")
@@ -150,7 +154,6 @@ with st.sidebar:
 
                     corpus_texts = [doc["text"] for doc in st.session_state["documents"]]
 
-                    # Building Retrievers
                     bm25_ret = BM25Retriever(corpus_texts)
                     dense_ret = DenseRetriever(corpus_texts, EMBEDDING_MODEL_NAME)
                     
@@ -183,7 +186,6 @@ else:
         top_k = st.slider("Top-K Retrieval (Number of Context Chunks):", min_value=1, max_value=10, value=DEFAULT_TOP_K)
 
     if query.strip():
-        # Retrieval Phase
         retrieval_start = time.time()
         with st.spinner("Executing Hybrid Search (BM25 + Dense) via RRF..."):
             hybrid_engine = st.session_state["hybrid_retriever"]
@@ -191,17 +193,14 @@ else:
             retrieved_chunks = [st.session_state["documents"][res["doc_id"]] for res in results]
         retrieval_time = round(time.time() - retrieval_start, 3)
 
-        # Generation Phase
         gen_start = time.time()
         with st.spinner("Synthesizing answer using LLM..."):
             ai_answer = generate_answer_with_openrouter(query, retrieved_chunks, user_openrouter_key, OPENROUTER_MODEL)
         gen_time = round(time.time() - gen_start, 3)
 
-        # Display Results
         st.markdown("### 🤖 Synthesized Academic Response:")
         st.success(ai_answer)
         
-        # Display Metrics
         st.caption(f"⏱️ **Performance Metrics:** Retrieval Time: {retrieval_time}s | Generation Time: {gen_time}s")
 
         st.markdown("---")
