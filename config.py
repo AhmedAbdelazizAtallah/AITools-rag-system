@@ -16,3 +16,6 @@ DEFAULT_CHUNK_OVERLAP = 50    # Word overlap to maintain context between chunks
 # Search and Hybrid Fusion (RRF) Hyperparameters
 DEFAULT_TOP_K = 3             # Number of top documents to retrieve
 RRF_K = 60                    # Reciprocal Rank Fusion constant
+
+# Minimum similarity score threshold to ensure the retrieved chunk is relevant to the user's query.
+MIN_SIMILARITY_SCORE = 0.25

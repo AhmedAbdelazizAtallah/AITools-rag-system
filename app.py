@@ -7,6 +7,12 @@ from pdf_parser import process_uploaded_files
 from retrievers import BM25Retriever, DenseRetriever, HybridRRFRetriever
 from indexer import FaissIndex
 
+# استيراد الحد الأدنى لسكور التشابه لحظر الأسئلة الخارجية
+try:
+    from config import MIN_SIMILARITY_SCORE
+except ImportError:
+    MIN_SIMILARITY_SCORE = 0.25
+
 st.set_page_config(
     page_title="Academic RAG Assistant",
     page_icon="🎓",
@@ -97,7 +103,6 @@ def generate_answer_with_openrouter(query: str, retrieved_chunks: list, user_key
 # ---------------------------------------------------------
 with st.sidebar:
     st.header("🔑 API Configuration")
-    # جعلنا القيمة value فارغة تماماً لحماية المفتاح، مع إضافة placeholder توضيحي
     user_openrouter_key = st.text_input(
         "OpenRouter API Key:", 
         value="", 
@@ -189,23 +194,29 @@ else:
         retrieval_start = time.time()
         with st.spinner("Executing Hybrid Search (BM25 + Dense) via RRF..."):
             hybrid_engine = st.session_state["hybrid_retriever"]
-            results = hybrid_engine.search(query, top_k=top_k)
+            # تمرير الحد الأدنى لسكور التشابه لمنع استرجاع قطع غير متعلقة بالسؤال
+            results = hybrid_engine.search(query, top_k=top_k, min_dense_score=MIN_SIMILARITY_SCORE)
             retrieved_chunks = [st.session_state["documents"][res["doc_id"]] for res in results]
         retrieval_time = round(time.time() - retrieval_start, 3)
 
-        gen_start = time.time()
-        with st.spinner("Synthesizing answer using LLM..."):
-            ai_answer = generate_answer_with_openrouter(query, retrieved_chunks, user_openrouter_key, OPENROUTER_MODEL)
-        gen_time = round(time.time() - gen_start, 3)
+        # 🚨 الفحص الشرطي: إذا لم يتخطَ أي مستند عتبة التشابه الأدنى
+        if not retrieved_chunks:
+            st.warning("⚠️ No relevant information found in the uploaded documents for this query.")
+            st.caption(f"⏱️ **Performance Metrics:** Retrieval Time: {retrieval_time}s")
+        else:
+            gen_start = time.time()
+            with st.spinner("Synthesizing answer using LLM..."):
+                ai_answer = generate_answer_with_openrouter(query, retrieved_chunks, user_openrouter_key, OPENROUTER_MODEL)
+            gen_time = round(time.time() - gen_start, 3)
 
-        st.markdown("### 🤖 Synthesized Academic Response:")
-        st.success(ai_answer)
-        
-        st.caption(f"⏱️ **Performance Metrics:** Retrieval Time: {retrieval_time}s | Generation Time: {gen_time}s")
+            st.markdown("### 🤖 Synthesized Academic Response:")
+            st.success(ai_answer)
+            
+            st.caption(f"⏱️ **Performance Metrics:** Retrieval Time: {retrieval_time}s | Generation Time: {gen_time}s")
 
-        st.markdown("---")
-        st.markdown("#### 📄 Retrieved Context (Ground Truth Sources):")
-        for i, doc_data in enumerate(retrieved_chunks, start=1):
-            meta = doc_data["metadata"]
-            with st.expander(f"📌 Source {i}: {meta['source_file']} (Page {meta['page_number']})"):
-                st.write(doc_data["text"])
+            st.markdown("---")
+            st.markdown("#### 📄 Retrieved Context (Ground Truth Sources):")
+            for i, doc_data in enumerate(retrieved_chunks, start=1):
+                meta = doc_data["metadata"]
+                with st.expander(f"📌 Source {i}: {meta['source_file']} (Page {meta['page_number']})"):
+                    st.write(doc_data["text"])

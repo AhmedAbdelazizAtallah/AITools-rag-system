@@ -67,26 +67,31 @@ class HybridRRFRetriever:
         self.bm25 = bm25_retriever
         self.dense = dense_retriever
 
-    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 5, min_dense_score: float = 0.25) -> List[Dict[str, Any]]:
         fetch_k = top_k * 2
-        bm25_res = self.bm25.search(query, top_k=fetch_k)
+        
+        # 1. فحص أعلى تشابه دلالي للسؤال مع الملفات
         dense_res = self.dense.search(query, top_k=fetch_k)
+        
+        # إذا كانت أعلى نتيجة تشابه دلالي أقل من الحد الأدنى، نرجع قائمة فارغة فوراً
+        if not dense_res or dense_res[0]["score"] < min_dense_score:
+            return []
 
+        bm25_res = self.bm25.search(query, top_k=fetch_k)
         rrf_scores = {}
 
-        # Calculate RRF score for Lexical results
+        # حساب سكور RRF للبحث اللفظي
         for item in bm25_res:
             doc_id = item["doc_id"]
             rank = item["rank"]
             rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + (1.0 / (RRF_K + rank))
 
-        # Calculate RRF score for Semantic results
+        # حساب سكور RRF للبحث الدلالي
         for item in dense_res:
             doc_id = item["doc_id"]
             rank = item["rank"]
             rrf_scores[doc_id] = rrf_scores.get(doc_id, 0.0) + (1.0 / (RRF_K + rank))
 
-        # Sort by the combined RRF score to get the best of both worlds
         sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
         return [
