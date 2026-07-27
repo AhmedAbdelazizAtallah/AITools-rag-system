@@ -92,7 +92,7 @@ def generate_answer_with_openrouter(query: str, retrieved_chunks: list, user_key
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.1
+            temperature=0.0
         )
         return response.choices[0].message.content
     except Exception as e:
